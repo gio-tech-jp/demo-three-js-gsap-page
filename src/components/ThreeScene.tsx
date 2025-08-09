@@ -9,6 +9,8 @@ const ThreeScene = (): React.ReactElement => {
   const sceneRef = useRef<THREE.Scene | null>(null); // Three.jsシーンオブジェクトへの参照
   const modelRef = useRef<THREE.Group | null>(null); // GLTFモデル（ギター）への参照
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null); // カメラへの参照（スクロールで操作するため）
+  const waveGeometryRef = useRef<THREE.PlaneGeometry | null>(null); // 波のジオメトリへの参照
+  const visualizerBarsRef = useRef<THREE.Group | null>(null); // ビジュアライザーバーのグループへの参照
   
   // スムーズなアニメーション用のターゲット値を管理
   const targetValues = useRef({
@@ -19,7 +21,8 @@ const ThreeScene = (): React.ReactElement => {
     positionX: 0,
     positionY: 0,
     scale: 1,
-    hue: 0
+    hue: 0,
+    lastScrollProgress: 0
   });
 
   useEffect(() => {
@@ -127,6 +130,53 @@ const ThreeScene = (): React.ReactElement => {
         console.error('Error loading guitar model:', error);
       }
     );
+
+    // === カクカクした音楽ビジュアライザーの作成 ===
+    
+    // ビジュアライザーバーのグループを作成
+    const visualizerGroup = new THREE.Group();
+    visualizerBarsRef.current = visualizerGroup;
+    
+    // 50本のバーを円形に配置
+    const barCount = 50;
+    const radius = 8;
+    
+    for (let i = 0; i < barCount; i++) {
+      // 各バーのジオメトリ（細い直方体）
+      const barGeometry = new THREE.BoxGeometry(0.2, 0.1, 0.2);
+      
+      // ランダムな色のマテリアル
+      const hue = (i / barCount) * 0.8; // 色相を分散
+      const barMaterial = new THREE.MeshBasicMaterial({
+        color: new THREE.Color().setHSL(hue, 0.8, 0.6),
+        transparent: true,
+        opacity: 0.8
+      });
+      
+      const bar = new THREE.Mesh(barGeometry, barMaterial);
+      
+      // 円形に配置
+      const angle = (i / barCount) * Math.PI * 2;
+      bar.position.x = Math.cos(angle) * radius;
+      bar.position.z = Math.sin(angle) * radius;
+      bar.position.y = -4; // ギターの下に配置
+      
+      // バーを垂直に立てる
+      bar.rotation.x = 0;
+      
+      // 初期データを保存
+      bar.userData = {
+        originalY: bar.position.y,
+        angle: angle,
+        index: i,
+        baseHeight: 0.1
+      };
+      
+      visualizerGroup.add(bar);
+    }
+    
+    visualizerGroup.position.y = 0;
+    scene.add(visualizerGroup);
 
     // === ライティング（照明）の設定 ===
     
@@ -264,6 +314,46 @@ const ThreeScene = (): React.ReactElement => {
             });
           }
         });
+        
+        // === ビジュアライザーバーのアニメーション（スクロールに同期） ===
+        if (visualizerBarsRef.current) {
+          const time = Date.now() * 0.001;
+          
+          // スクロール強度を計算（0-1の範囲で正規化）
+          const scrollIntensity = Math.abs(scrollProgress - (targetValues.current.lastScrollProgress || 0)) * 10;
+          targetValues.current.lastScrollProgress = scrollProgress;
+          
+          // 基本的な音楽的な動きに加えて、スクロール連動
+          const baseIntensity = 0.5 + scrollProgress * 2; // スクロール位置で基本強度を変更
+          const dynamicIntensity = Math.min(scrollIntensity + baseIntensity, 5); // 最大5倍まで
+          
+          visualizerBarsRef.current.children.forEach((bar, index) => {
+            if (bar instanceof THREE.Mesh) {
+              // 各バーの高さを計算（音楽ビジュアライザー風）
+              const frequency = (index * 0.1) + (scrollProgress * 5);
+              const wave1 = Math.abs(Math.sin(time * 3 + frequency)) * dynamicIntensity;
+              const wave2 = Math.abs(Math.cos(time * 2.5 + frequency * 1.5)) * (dynamicIntensity * 0.7);
+              const wave3 = Math.abs(Math.sin(time * 4 + frequency * 0.8 + scrollProgress * 20)) * (dynamicIntensity * 0.5);
+              
+              // カクカクした動きのために値を段階的に
+              const totalWave = wave1 + wave2 + wave3;
+              const steppedHeight = Math.floor(totalWave * 4) / 4; // 4段階に分ける
+              
+              const newHeight = Math.max(0.1, steppedHeight);
+              
+              // バーの高さとスケールを更新
+              bar.scale.y = newHeight;
+              bar.position.y = bar.userData.originalY + (newHeight - bar.userData.baseHeight) / 2;
+              
+              // スクロールに応じて色も変化
+              const hue = ((index / 50) + scrollProgress * 0.5) % 1;
+              (bar.material as THREE.MeshBasicMaterial).color.setHSL(hue, 0.9, 0.6 + steppedHeight * 0.2);
+              
+              // 透明度もバーの高さに応じて変化
+              (bar.material as THREE.MeshBasicMaterial).opacity = 0.6 + (steppedHeight * 0.4);
+            }
+          });
+        }
       }
     };
     
