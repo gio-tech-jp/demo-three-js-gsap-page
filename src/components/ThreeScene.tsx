@@ -8,6 +8,18 @@ const ThreeScene = (): React.ReactElement => {
   const sceneRef = useRef<THREE.Scene | null>(null); // Three.jsシーンオブジェクトへの参照
   const cubeRef = useRef<THREE.Mesh<THREE.BoxGeometry, THREE.MeshPhongMaterial> | null>(null); // キューブメッシュへの参照
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null); // カメラへの参照（スクロールで操作するため）
+  
+  // スムーズなアニメーション用のターゲット値を管理
+  const targetValues = useRef({
+    rotationX: 0,
+    rotationY: 0,
+    rotationZ: 0,
+    cameraZ: 5,
+    positionX: 0,
+    positionY: 0,
+    scale: 1,
+    hue: 0
+  });
 
   useEffect(() => {
     // === Three.js基本セットアップ ===
@@ -57,20 +69,43 @@ const ThreeScene = (): React.ReactElement => {
     // ジオメトリ（Geometry）: オブジェクトの形状を定義
     const geometry = new THREE.BoxGeometry(1, 3, 1); // 2x2x2のボックス形状
     
+    // 発色の良いランダムカラーを生成
+    const vibrantColors = [
+      0xff0080, // ビビッドピンク
+      0x00ff80, // ネオングリーン
+      0x8000ff, // エレクトリックパープル
+      0xff8000, // ビビッドオレンジ
+      0x0080ff, // エレクトリックブルー
+      0xff0040, // ホットピンク
+      0x40ff00, // ライムグリーン
+      0x00ffff, // シアン
+      0xffff00, // イエロー
+      0xff4000  // レッドオレンジ
+    ];
+    
+    const randomColor = vibrantColors[Math.floor(Math.random() * vibrantColors.length)];
+    
     // マテリアル（Material）: オブジェクトの見た目（色、質感）を定義
     const material = new THREE.MeshPhongMaterial({ 
-      color: 0x16213e, // ベースカラー（濃い青）
-      shininess: 50, // 光沢の強さ（0-1000）
-      specular: 0x4dabf7 // ハイライト色（明るい青）
+      color: randomColor, // ランダムなビビッドカラー
+      shininess: 100, // 光沢の強さを上げて発色を良く
+      specular: 0xffffff, // ハイライト色を白にして輝きを強調
+      emissive: randomColor, // 自発光を追加してさらに鮮やか
+      emissiveIntensity: 0.1 // 自発光の強度
     });
     
     // メッシュ（Mesh）: ジオメトリとマテリアルを組み合わせた3Dオブジェクト
     const cube = new THREE.Mesh<THREE.BoxGeometry, THREE.MeshPhongMaterial>(geometry, material);
     
-    // 初期回転を設定（見栄えの良い角度に）
-    cube.rotation.x = Math.PI * 0.2; // 36度回転
-    cube.rotation.y = Math.PI * 0.25; // 45度回転
-    cube.rotation.z = Math.PI * 0.1; // 18度回転
+    // 初期回転をランダムに設定
+    cube.rotation.x = Math.random() * Math.PI * 2; // 0-360度ランダム回転
+    cube.rotation.y = Math.random() * Math.PI * 2; // 0-360度ランダム回転
+    cube.rotation.z = Math.random() * Math.PI * 2; // 0-360度ランダム回転
+    
+    // 初期位置をランダムに設定（画面内の適度な範囲で）
+    cube.position.x = (Math.random() - 0.5) * 4; // -2 から +2 の範囲
+    cube.position.y = (Math.random() - 0.5) * 4; // -2 から +2 の範囲
+    cube.position.z = (Math.random() - 0.5) * 2; // -1 から +1 の範囲
     
     scene.add(cube); // シーンにキューブを追加
 
@@ -130,31 +165,86 @@ const ThreeScene = (): React.ReactElement => {
         const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
         const scrollProgress = maxScroll > 0 ? scrollY / maxScroll : 0;
         
-        // === キューブの回転（初期回転 + スクロール位置に基づく追加回転） ===
-        const baseRotationX = Math.PI * 0.2; // 初期回転X（36度）
-        const baseRotationY = Math.PI * 0.25; // 初期回転Y（45度）
-        const baseRotationZ = Math.PI * 0.1; // 初期回転Z（18度）
+        // === 初期回転値を保存（初回のみ） ===
+        if (!cubeRef.current.userData.initialRotationX) {
+          cubeRef.current.userData.initialRotationX = cubeRef.current.rotation.x;
+          cubeRef.current.userData.initialRotationY = cubeRef.current.rotation.y;
+          cubeRef.current.userData.initialRotationZ = cubeRef.current.rotation.z;
+          
+          // 初期カメラ位置も保存
+          cubeRef.current.userData.initialCameraZ = cameraRef.current.position.z;
+        }
         
-        cubeRef.current.rotation.x = baseRotationX + scrollProgress * Math.PI * 4; // 初期 + 2回転
-        cubeRef.current.rotation.y = baseRotationY + scrollProgress * Math.PI * 3; // 初期 + 1.5回転
-        cubeRef.current.rotation.z = baseRotationZ + scrollProgress * Math.PI * 2; // 初期 + 1回転
+        const initialRotationX = cubeRef.current.userData.initialRotationX;
+        const initialRotationY = cubeRef.current.userData.initialRotationY;
+        const initialRotationZ = cubeRef.current.userData.initialRotationZ;
         
-        // === カメラのズーム（スクロール位置に基づく） ===
-        const minZ = 3; // 最小距離（ズームイン）
-        const maxZ = 12; // 最大距離（ズームアウト）
-        cameraRef.current.position.z = minZ + scrollProgress * (maxZ - minZ);
+        // === ターゲット値を計算（より緩やかな変化） ===
+        targetValues.current.rotationX = initialRotationX + scrollProgress * Math.PI * 2; // 2回転→1回転に削減
+        targetValues.current.rotationY = initialRotationY + scrollProgress * Math.PI * 1.5; // 1.5回転→0.75回転に削減
+        targetValues.current.rotationZ = initialRotationZ + scrollProgress * Math.PI * 1; // 1回転→0.5回転に削減
         
-        // === キューブの位置変化（スクロール位置に基づく） ===
-        cubeRef.current.position.x = Math.sin(scrollProgress * Math.PI * 2) * 1;
-        cubeRef.current.position.y = Math.cos(scrollProgress * Math.PI * 3) * 0.5;
+        // カメラズーム（より緩やか）
+        const minZ = 4; // 最小距離を少し遠くに
+        const maxZ = 8; // 最大距離を近めに
+        targetValues.current.cameraZ = minZ + scrollProgress * (maxZ - minZ);
         
-        // === 色の変化（スクロール位置に基づく） ===
-        const hue = scrollProgress; // 0-1の範囲で色相変化
-        cubeRef.current.material.color.setHSL(hue, 0.8, 0.6);
+        // 位置変化（より小さく）
+        targetValues.current.positionX = Math.sin(scrollProgress * Math.PI * 1.5) * 0.5; // 振幅を半分に
+        targetValues.current.positionY = Math.cos(scrollProgress * Math.PI * 2) * 0.3; // 振幅を小さく
         
-        // === スケールの変化（スクロール位置に基づく） ===
-        const scale = 1 + Math.sin(scrollProgress * Math.PI * 2) * 0.3;
-        cubeRef.current.scale.set(scale, scale, scale);
+        // 色相変化
+        targetValues.current.hue = scrollProgress * 0.8; // 色相変化を少し抑制
+        
+        // スケール変化（より微細に）
+        targetValues.current.scale = 1 + Math.sin(scrollProgress * Math.PI * 1.5) * 0.15; // 振幅を小さく
+        
+        // === GSAPを使ったスムーズな補間アニメーション ===
+        const duration = 0.8; // アニメーション時間を長くしてよりスムーズに
+        const ease = "power2.out"; // イージング関数で自然な動き
+        
+        // 回転のアニメーション
+        gsap.to(cubeRef.current.rotation, {
+          x: targetValues.current.rotationX,
+          y: targetValues.current.rotationY,
+          z: targetValues.current.rotationZ,
+          duration: duration,
+          ease: ease
+        });
+        
+        // カメラのアニメーション
+        gsap.to(cameraRef.current.position, {
+          z: targetValues.current.cameraZ,
+          duration: duration,
+          ease: ease
+        });
+        
+        // 位置のアニメーション
+        gsap.to(cubeRef.current.position, {
+          x: targetValues.current.positionX,
+          y: targetValues.current.positionY,
+          duration: duration,
+          ease: ease
+        });
+        
+        // スケールのアニメーション
+        gsap.to(cubeRef.current.scale, {
+          x: targetValues.current.scale,
+          y: targetValues.current.scale,
+          z: targetValues.current.scale,
+          duration: duration,
+          ease: ease
+        });
+        
+        // 色のアニメーション（HSL色空間でスムーズに）
+        gsap.to({ hue: cubeRef.current.material.color.getHSL({ h: 0, s: 0, l: 0 }).h }, {
+          hue: targetValues.current.hue,
+          duration: duration,
+          ease: ease,
+          onUpdate: function() {
+            cubeRef.current?.material.color.setHSL(this.targets()[0].hue, 0.9, 0.7);
+          }
+        });
       }
     };
     
