@@ -116,7 +116,7 @@ const ThreeScene = (): React.ReactElement => {
       cube.position.z = (Math.random() - 0.5) * 2;
       
       // スケールを設定
-      cube.scale.set(2, 2, 2);
+      cube.scale.set(1, 1, 1);
       
       scene.add(cube);
       
