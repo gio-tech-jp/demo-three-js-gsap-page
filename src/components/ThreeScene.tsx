@@ -70,6 +70,72 @@ const ThreeScene = (): React.ReactElement => {
 
     // === GLBモデル（ギター）の読み込み ===
     
+    // フォールバック用のキューブ作成関数
+    const createFallbackCube = () => {
+      console.log('Creating fallback cube due to GLB loading error');
+      
+      // ジオメトリ（Geometry）: オブジェクトの形状を定義
+      const geometry = new THREE.BoxGeometry(2, 4, 1); // ギターのような縦長形状
+      
+      // 発色の良いランダムカラーを生成
+      const vibrantColors = [
+        0xff0080, // ビビッドピンク
+        0x00ff80, // ネオングリーン
+        0x8000ff, // エレクトリックパープル
+        0xff8000, // ビビッドオレンジ
+        0x0080ff, // エレクトリックブルー
+        0xff0040, // ホットピンク
+        0x40ff00, // ライムグリーン
+        0x00ffff, // シアン
+        0xffff00, // イエロー
+        0xff4000  // レッドオレンジ
+      ];
+      
+      const randomColor = vibrantColors[Math.floor(Math.random() * vibrantColors.length)];
+      
+      // マテリアル（Material）: オブジェクトの見た目（色、質感）を定義
+      const material = new THREE.MeshPhongMaterial({ 
+        color: randomColor,
+        shininess: 100,
+        specular: 0xffffff,
+        emissive: randomColor,
+        emissiveIntensity: 0.1
+      });
+      
+      // メッシュ（Mesh）: ジオメトリとマテリアルを組み合わせた3Dオブジェクト
+      const cube = new THREE.Mesh(geometry, material);
+      
+      // 初期回転をランダムに設定
+      cube.rotation.x = Math.random() * Math.PI * 2;
+      cube.rotation.y = Math.random() * Math.PI * 2;
+      cube.rotation.z = Math.random() * Math.PI * 2;
+      
+      // 初期位置をランダムに設定
+      cube.position.x = (Math.random() - 0.5) * 4;
+      cube.position.y = (Math.random() - 0.5) * 4;
+      cube.position.z = (Math.random() - 0.5) * 2;
+      
+      // スケールを設定
+      cube.scale.set(2, 2, 2);
+      
+      scene.add(cube);
+      
+      // Groupとして扱うためにGroupでラップ
+      const group = new THREE.Group();
+      group.add(cube);
+      group.position.copy(cube.position);
+      group.rotation.copy(cube.rotation);
+      group.scale.copy(cube.scale);
+      
+      // 元のキューブは削除
+      scene.remove(cube);
+      scene.add(group);
+      
+      modelRef.current = group;
+      
+      return group;
+    };
+
     const loader = new GLTFLoader();
     loader.load(
       '/models/guitar.glb',
@@ -128,6 +194,8 @@ const ThreeScene = (): React.ReactElement => {
       },
       (error) => {
         console.error('Error loading guitar model:', error);
+        // エラー時はフォールバックキューブを作成
+        createFallbackCube();
       }
     );
 
