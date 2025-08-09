@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { gsap } from 'gsap';
 
 const ThreeScene = (): React.ReactElement => {
   // React Refを使ってDOM要素とThree.jsオブジェクトを参照
   const mountRef = useRef<HTMLDivElement>(null); // Three.jsキャンバスをマウントするDOM要素への参照
   const sceneRef = useRef<THREE.Scene | null>(null); // Three.jsシーンオブジェクトへの参照
-  const cubeRef = useRef<THREE.Mesh<THREE.BoxGeometry, THREE.MeshPhongMaterial> | null>(null); // キューブメッシュへの参照
+  const modelRef = useRef<THREE.Group | null>(null); // GLTFモデル（ギター）への参照
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null); // カメラへの参照（スクロールで操作するため）
   
   // スムーズなアニメーション用のターゲット値を管理
@@ -64,50 +65,68 @@ const ThreeScene = (): React.ReactElement => {
     
     mountRef.current!.appendChild(canvas); // HTML CanvasをDOMに追加
 
-    // === 3Dオブジェクト（キューブ）の作成 ===
+    // === GLBモデル（ギター）の読み込み ===
     
-    // ジオメトリ（Geometry）: オブジェクトの形状を定義
-    const geometry = new THREE.BoxGeometry(1, 3, 1); // 2x2x2のボックス形状
-    
-    // 発色の良いランダムカラーを生成
-    const vibrantColors = [
-      0xff0080, // ビビッドピンク
-      0x00ff80, // ネオングリーン
-      0x8000ff, // エレクトリックパープル
-      0xff8000, // ビビッドオレンジ
-      0x0080ff, // エレクトリックブルー
-      0xff0040, // ホットピンク
-      0x40ff00, // ライムグリーン
-      0x00ffff, // シアン
-      0xffff00, // イエロー
-      0xff4000  // レッドオレンジ
-    ];
-    
-    const randomColor = vibrantColors[Math.floor(Math.random() * vibrantColors.length)];
-    
-    // マテリアル（Material）: オブジェクトの見た目（色、質感）を定義
-    const material = new THREE.MeshPhongMaterial({ 
-      color: randomColor, // ランダムなビビッドカラー
-      shininess: 100, // 光沢の強さを上げて発色を良く
-      specular: 0xffffff, // ハイライト色を白にして輝きを強調
-      emissive: randomColor, // 自発光を追加してさらに鮮やか
-      emissiveIntensity: 0.1 // 自発光の強度
-    });
-    
-    // メッシュ（Mesh）: ジオメトリとマテリアルを組み合わせた3Dオブジェクト
-    const cube = new THREE.Mesh<THREE.BoxGeometry, THREE.MeshPhongMaterial>(geometry, material);
-    
-    // 初期回転をランダムに設定
-    cube.rotation.x = Math.random() * Math.PI * 2; // 0-360度ランダム回転
-    cube.rotation.y = Math.random() * Math.PI * 2; // 0-360度ランダム回転
-    cube.rotation.z = Math.random() * Math.PI * 2; // 0-360度ランダム回転
-    
-    // 初期位置をランダムに設定（画面内の適度な範囲で）
-    cube.position.x = (Math.random() - 0.5) * 4; // -2 から +2 の範囲
-    cube.position.y = (Math.random() - 0.5) * 4; // -2 から +2 の範囲
-    cube.position.z = (Math.random() - 0.5) * 2; // -1 から +1 の範囲
-    
-    scene.add(cube); // シーンにキューブを追加
+    const loader = new GLTFLoader();
+    loader.load(
+      '/models/guitar.glb',
+      (gltf) => {
+        const guitarModel = gltf.scene;
+        
+        // モデルのスケールを大きく調整
+        guitarModel.scale.set(5, 5, 5);
+        
+        // 初期回転をランダムに設定
+        guitarModel.rotation.x = Math.random() * Math.PI * 2;
+        guitarModel.rotation.y = Math.random() * Math.PI * 2;
+        guitarModel.rotation.z = Math.random() * Math.PI * 2;
+        
+        // 初期位置をランダムに設定
+        guitarModel.position.x = (Math.random() - 0.5) * 4;
+        guitarModel.position.y = (Math.random() - 0.5) * 4;
+        guitarModel.position.z = (Math.random() - 0.5) * 2;
+        
+        // マテリアルを発色の良い色に変更
+        const vibrantColors = [
+          0xff0080, // ビビッドピンク
+          0x00ff80, // ネオングリーン
+          0x8000ff, // エレクトリックパープル
+          0xff8000, // ビビッドオレンジ
+          0x0080ff, // エレクトリックブルー
+          0xff0040, // ホットピンク
+          0x40ff00, // ライムグリーン
+          0x00ffff, // シアン
+          0xffff00, // イエロー
+          0xff4000  // レッドオレンジ
+        ];
+        
+        const randomColor = vibrantColors[Math.floor(Math.random() * vibrantColors.length)];
+        
+        // モデル内の全てのメッシュに新しいマテリアルを適用
+        guitarModel.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.material = new THREE.MeshPhongMaterial({
+              color: randomColor,
+              shininess: 100,
+              specular: 0xffffff,
+              emissive: randomColor,
+              emissiveIntensity: 0.1
+            });
+          }
+        });
+        
+        scene.add(guitarModel);
+        modelRef.current = guitarModel;
+        
+        console.log('Guitar model loaded successfully');
+      },
+      (progress) => {
+        console.log('Loading progress:', (progress.loaded / progress.total * 100) + '%');
+      },
+      (error) => {
+        console.error('Error loading guitar model:', error);
+      }
+    );
 
     // === ライティング（照明）の設定 ===
     
@@ -126,21 +145,17 @@ const ThreeScene = (): React.ReactElement => {
     directionalLight.position.set(5, 5, 5); // 光の位置（x, y, z）
     scene.add(directionalLight);
 
-    // カメラの位置設定（Z軸正の方向に5単位移動）
-    camera.position.set(0, 0, 5); // より明示的に設定
+    // カメラの位置設定（より近くに配置してズーム効果）
+    camera.position.set(0, 0, 1.8); // カメラをより近くに配置
     camera.lookAt(0, 0, 0); // 原点を見るように設定
 
     // React Refに参照を保存（他の関数から使用するため）
     sceneRef.current = scene;
-    cubeRef.current = cube;
     cameraRef.current = camera;
     
     // デバッグ: シーンの初期状態をログ出力
     console.log('Scene created with', scene.children.length, 'children');
     console.log('Camera position:', camera.position);
-    console.log('Cube position:', cube.position);
-    console.log('Cube visible:', cube.visible);
-    console.log('Material color:', cube.material.color);
 
     // === 初期状態設定 ===
     // キューブは静止状態から開始（スクロールによってのみアニメーション）
@@ -159,52 +174,52 @@ const ThreeScene = (): React.ReactElement => {
     
     // スクロール位置に基づいてオブジェクトを更新する関数
     const updateFromScroll = () => {
-      if (cubeRef.current && cameraRef.current) {
+      if (modelRef.current && cameraRef.current) {
         // 現在のスクロール位置を取得
         const scrollY = window.scrollY;
         const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
         const scrollProgress = maxScroll > 0 ? scrollY / maxScroll : 0;
         
         // === 初期回転値を保存（初回のみ） ===
-        if (!cubeRef.current.userData.initialRotationX) {
-          cubeRef.current.userData.initialRotationX = cubeRef.current.rotation.x;
-          cubeRef.current.userData.initialRotationY = cubeRef.current.rotation.y;
-          cubeRef.current.userData.initialRotationZ = cubeRef.current.rotation.z;
+        if (!modelRef.current.userData.initialRotationX) {
+          modelRef.current.userData.initialRotationX = modelRef.current.rotation.x;
+          modelRef.current.userData.initialRotationY = modelRef.current.rotation.y;
+          modelRef.current.userData.initialRotationZ = modelRef.current.rotation.z;
           
           // 初期カメラ位置も保存
-          cubeRef.current.userData.initialCameraZ = cameraRef.current.position.z;
+          modelRef.current.userData.initialCameraZ = cameraRef.current.position.z;
         }
         
-        const initialRotationX = cubeRef.current.userData.initialRotationX;
-        const initialRotationY = cubeRef.current.userData.initialRotationY;
-        const initialRotationZ = cubeRef.current.userData.initialRotationZ;
+        const initialRotationX = modelRef.current.userData.initialRotationX;
+        const initialRotationY = modelRef.current.userData.initialRotationY;
+        const initialRotationZ = modelRef.current.userData.initialRotationZ;
         
         // === ターゲット値を計算（より緩やかな変化） ===
         targetValues.current.rotationX = initialRotationX + scrollProgress * Math.PI * 2; // 2回転→1回転に削減
         targetValues.current.rotationY = initialRotationY + scrollProgress * Math.PI * 1.5; // 1.5回転→0.75回転に削減
         targetValues.current.rotationZ = initialRotationZ + scrollProgress * Math.PI * 1; // 1回転→0.5回転に削減
         
-        // カメラズーム（より緩やか）
-        const minZ = 4; // 最小距離を少し遠くに
-        const maxZ = 8; // 最大距離を近めに
+        // カメラズーム（より近く、ダイナミックに）
+        const minZ = 2; // 最小距離（大きくズームイン）
+        const maxZ = 6; // 最大距離（適度にズームアウト）
         targetValues.current.cameraZ = minZ + scrollProgress * (maxZ - minZ);
         
-        // 位置変化（より小さく）
-        targetValues.current.positionX = Math.sin(scrollProgress * Math.PI * 1.5) * 0.5; // 振幅を半分に
-        targetValues.current.positionY = Math.cos(scrollProgress * Math.PI * 2) * 0.3; // 振幅を小さく
+        // 位置変化（ギターサイズに合わせて調整）
+        targetValues.current.positionX = Math.sin(scrollProgress * Math.PI * 1.5) * 0.8; // 振幅を大きく
+        targetValues.current.positionY = Math.cos(scrollProgress * Math.PI * 2) * 0.6; // 振幅を大きく
         
         // 色相変化
         targetValues.current.hue = scrollProgress * 0.8; // 色相変化を少し抑制
         
-        // スケール変化（より微細に）
-        targetValues.current.scale = 1 + Math.sin(scrollProgress * Math.PI * 1.5) * 0.15; // 振幅を小さく
+        // スケール変化（大きいモデルに合わせて調整）
+        targetValues.current.scale = 5 + Math.sin(scrollProgress * Math.PI * 1.5) * 1.5; // ベーススケール5に動的変化を追加
         
         // === GSAPを使ったスムーズな補間アニメーション ===
         const duration = 0.8; // アニメーション時間を長くしてよりスムーズに
         const ease = "power2.out"; // イージング関数で自然な動き
         
         // 回転のアニメーション
-        gsap.to(cubeRef.current.rotation, {
+        gsap.to(modelRef.current.rotation, {
           x: targetValues.current.rotationX,
           y: targetValues.current.rotationY,
           z: targetValues.current.rotationZ,
@@ -220,7 +235,7 @@ const ThreeScene = (): React.ReactElement => {
         });
         
         // 位置のアニメーション
-        gsap.to(cubeRef.current.position, {
+        gsap.to(modelRef.current.position, {
           x: targetValues.current.positionX,
           y: targetValues.current.positionY,
           duration: duration,
@@ -228,7 +243,7 @@ const ThreeScene = (): React.ReactElement => {
         });
         
         // スケールのアニメーション
-        gsap.to(cubeRef.current.scale, {
+        gsap.to(modelRef.current.scale, {
           x: targetValues.current.scale,
           y: targetValues.current.scale,
           z: targetValues.current.scale,
@@ -236,13 +251,17 @@ const ThreeScene = (): React.ReactElement => {
           ease: ease
         });
         
-        // 色のアニメーション（HSL色空間でスムーズに）
-        gsap.to({ hue: cubeRef.current.material.color.getHSL({ h: 0, s: 0, l: 0 }).h }, {
+        // 色のアニメーション（モデル内の全メッシュに適用）
+        gsap.to({ hue: targetValues.current.hue }, {
           hue: targetValues.current.hue,
           duration: duration,
           ease: ease,
           onUpdate: function() {
-            cubeRef.current?.material.color.setHSL(this.targets()[0].hue, 0.9, 0.7);
+            modelRef.current?.traverse((child) => {
+              if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshPhongMaterial) {
+                child.material.color.setHSL(this.targets()[0].hue, 0.9, 0.7);
+              }
+            });
           }
         });
       }
